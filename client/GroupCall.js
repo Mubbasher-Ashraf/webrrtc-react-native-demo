@@ -41,9 +41,28 @@ const GroupCall = () => {
     return () => {
       newSocket.disconnect();
     };
-  }, []);
+  }, [localStream]);
 
   const initSocketListeners = socket => {
+    socket.on('user-connected', async userId => {
+      console.log('user-connected', userId);
+      // if (!localStream) {
+      //   console.warn('Local stream not initialized');
+      //   return;
+      // }
+      const peer = await createPeerConnection(userId, true);
+      localStream?.getTracks().forEach(track => {
+        peer.addTrack(track, localStream);
+      });
+      // const offer = await peer.createOffer();
+      // await peer.setLocalDescription(new RTCSessionDescription(offer));
+
+      // socket.emit('call', {
+      //   roomId,
+      //   calleeId: userId,
+      //   rtcMessage: offer,
+      // });
+    });
     socket.on('call', async data => {
       const {callerId, rtcMessage} = data;
       if (!connections[callerId]) {
@@ -61,8 +80,11 @@ const GroupCall = () => {
     });
 
     socket.on('answerCall', async data => {
-      const {callee, rtcMessage} = data;
-      const peer = connections[callee];
+      console.log({data});
+      const {callerId, rtcMessage} = data;
+      const peer = connections[callerId];
+
+      console.log('peeeeeeeeeeeeeeeeeeeeer ------->', peer);
       if (peer) {
         await peer.setRemoteDescription(new RTCSessionDescription(rtcMessage));
       }
@@ -78,6 +100,7 @@ const GroupCall = () => {
     });
 
     socket.on('userDisconnected', userId => {
+      console.log({userId, remoteStreams});
       const updatedConnections = {...connections};
       delete updatedConnections[userId];
       setConnections(updatedConnections);
@@ -90,6 +113,7 @@ const GroupCall = () => {
 
   const createPeerConnection = async (id, isCaller) => {
     const peer = new RTCPeerConnection(configuration);
+    console.log('in peer connection');
 
     peer.onicecandidate = event => {
       if (event.candidate) {
@@ -100,11 +124,16 @@ const GroupCall = () => {
         });
       }
     };
+    console.log({peer});
 
-    peer.onaddstream = event => {
+    peer.ontrack = event => {
+      console.log('ontrack event:', event);
+      const stream = event.streams[0];
+      console.log('ontrack stream:', stream);
+
       setRemoteStreams(prevRemoteStreams => ({
         ...prevRemoteStreams,
-        [id]: event.stream,
+        [id]: stream,
       }));
     };
 
@@ -122,6 +151,12 @@ const GroupCall = () => {
     if (!localStream) {
       await initLocalStream();
     }
+
+    Object.values(connections).forEach(peer => {
+      localStream.getTracks().forEach(track => {
+        peer.addTrack(track, localStream);
+      });
+    });
 
     socket.emit('joinRoom', roomId);
     setIsInCall(true);
@@ -171,6 +206,8 @@ const GroupCall = () => {
     setIsInCall(false);
   };
 
+  console.log({remoteStreams, connections});
+
   return (
     <View style={styles.container}>
       {!isInCall && (
@@ -214,14 +251,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F5FCFF',
   },
   joinButton: {
-    backgroundColor: 'blue',
-    padding: 20,
-    marginBottom: 20,
+    backgroundColor: '#1E90FF',
+    padding: 15,
+    borderRadius: 10,
+  },
+  leaveButton: {
+    backgroundColor: '#FF4500',
+    padding: 15,
+    borderRadius: 10,
   },
   buttonText: {
-    color: 'white',
+    fontSize: 18,
+    color: '#fff',
   },
   videoContainer: {
     flex: 1,
@@ -230,27 +274,20 @@ const styles = StyleSheet.create({
   videoContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   localVideo: {
-    width: 180,
-    height: 120,
-    backgroundColor: 'black',
-    borderRadius: 5,
+    width: 200,
+    height: 200,
     margin: 10,
+    borderColor: '#1E90FF',
+    borderWidth: 3,
   },
   remoteVideo: {
-    width: 180,
-    height: 120,
-    backgroundColor: 'black',
-    borderRadius: 5,
+    width: 200,
+    height: 200,
     margin: 10,
-  },
-  leaveButton: {
-    backgroundColor: 'red',
-    padding: 20,
-    marginBottom: 20,
+    borderColor: '#3CB371',
+    borderWidth: 3,
   },
 });
 
